@@ -6,7 +6,8 @@
     <title>日常消费登记簿</title>
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icon-192.png">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -145,6 +146,14 @@
         body.dark th {
             background:#334155;
         }
+        .total-row td {
+            font-weight:bold;
+            background:#e9f3ff;
+            font-size:1.5em;
+        }
+        body.dark .total-row td {
+            background:#334155;
+        }
         /* 设置弹窗样式 */
         .modal-mask {
             position: fixed;
@@ -212,6 +221,34 @@
             border:none;
         }
 
+        .flag-icon { width:20px; height:13px; vertical-align:middle; border-radius:2px; }
+        .custom-select { flex:1; position:relative; }
+        .select-trigger {
+            display: flex; align-items: center; gap: 6px;
+            padding: 10px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 15px; cursor: pointer; background: #fff;
+            user-select: none; transition: all 0.3s;
+        }
+        .select-trigger .arrow { margin-left: auto; font-size: 10px; }
+        .select-options {
+            display: none;
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+            background: #fff; border: 1px solid #ddd; border-radius: 6px;
+            margin-top: 2px; overflow: hidden;
+        }
+        .select-options.open { display: block; }
+        .select-option {
+            display: flex; align-items: center; gap: 6px;
+            padding: 10px; cursor: pointer; transition: background 0.2s;
+        }
+        .select-option:hover { background: #f0f0f0; }
+        body.dark .select-trigger {
+            background: #444; color: #eee; border-color: #555;
+        }
+        body.dark .select-options {
+            background: #444; border-color: #555;
+        }
+        body.dark .select-option:hover { background: #555; }
         /* 切换开关样式 */
         .toggle-switch-wrap {
             display: flex;
@@ -281,12 +318,23 @@
                 <option value="餐饮">餐饮</option>
                 <option value="娱乐消费">娱乐消费</option>
             </select>
-            <select id="currencySelect">
-                <option value="葡币">葡币</option>
-                <option value="人民币">人民币</option>
-                <option value="澳门元">澳门元</option>
-                <option value="港币">港币</option>
-            </select>
+            <div class="custom-select" id="currencySelectWrap">
+                <div class="select-trigger">
+                    <img class="flag-icon" src="Macau.png"> 葡币
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="select-options">
+                    <div class="select-option" data-value="葡币">
+                        <img class="flag-icon" src="Macau.png"> 葡币
+                    </div>
+                    <div class="select-option" data-value="人民币">
+                        <img class="flag-icon" src="china.png"> 人民币
+                    </div>
+                    <div class="select-option" data-value="港币">
+                        <img class="flag-icon" src="HK.png"> 港币
+                    </div>
+                </div>
+            </div>
         </div>
         <!-- 第二行：消费内容输入 -->
         <div class="line-row">
@@ -302,6 +350,15 @@
 
     <!-- 当日账单列表 -->
     <div>
+        <table id="dailyTotalTable" style="margin-bottom:10px;">
+            <thead>
+                <tr>
+                    <th>币种</th>
+                    <th>金额</th>
+                </tr>
+            </thead>
+            <tbody id="dailyTotalBody"></tbody>
+        </table>
         <div class="list-title">当日消费清单</div>
         <table>
             <colgroup>
@@ -358,7 +415,6 @@
         const dayPicker = document.getElementById("dayPicker");
         const typeSelect = document.getElementById("typeSelect");
         const goodsInput = document.getElementById("goodsInput");
-        const currencySelect = document.getElementById("currencySelect");
         const amountInput = document.getElementById("amountInput");
         const addBtn = document.getElementById("addBtn");
         const billList = document.getElementById("billList");
@@ -371,6 +427,26 @@
         const summaryTitle = document.getElementById("summaryTitle");
         const summaryContent = document.getElementById("summaryContent");
 
+        // 自訂幣種下拉選單
+        const selectWrap = document.getElementById('currencySelectWrap');
+        const selectTrigger = selectWrap.querySelector('.select-trigger');
+        const selectOptions = selectWrap.querySelector('.select-options');
+        const allCurrencyOptions = selectWrap.querySelectorAll('.select-option');
+        let selectedCurrency = '葡币';
+        selectTrigger.onclick = (e) => {
+            e.stopPropagation();
+            selectOptions.classList.toggle('open');
+        };
+        allCurrencyOptions.forEach(opt => {
+            opt.onclick = () => {
+                const val = opt.dataset.value;
+                selectedCurrency = val;
+                const imgSrc = opt.querySelector('img').src;
+                selectTrigger.innerHTML = `<img class="flag-icon" src="${imgSrc}"> ${val} <span class="arrow">▼</span>`;
+                selectOptions.classList.remove('open');
+            };
+        });
+        document.addEventListener('click', () => { selectOptions.classList.remove('open'); });
         // 深浅模式初始化
         function initDarkMode(){
             const isDark = localStorage.getItem(DARK_KEY) === "1";
@@ -415,12 +491,35 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
         }
 
-        // 渲染当日账单（表格删除日期列，只保留时间）
+        // 渲染当日账单
         function renderBills() {
             const all = getAllBills();
             const targetDay = dayPicker.value;
             const dayBills = all.filter(item => item.date === targetDay);
             billList.innerHTML = "";
+
+            // 计算当日消费总额（表格显示，所有币种均显示）
+            const currencies = ["葡币", "人民币", "港币"];
+            const currencyFlagImg = {
+                "葡币": `<img class="flag-icon" src="Macau.png">`,
+                "人民币": `<img class="flag-icon" src="china.png">`,
+                "港币": `<img class="flag-icon" src="HK.png">`
+            };
+            const totalByCurrency = {};
+            currencies.forEach(c => totalByCurrency[c] = 0);
+            let grandTotal = 0;
+            dayBills.forEach(b => {
+                const num = Number(b.amount);
+                grandTotal += num;
+                totalByCurrency[b.currency] += num;
+            });
+            const dailyTotalBody = document.getElementById("dailyTotalBody");
+            let html = "";
+            for (let c of currencies) {
+                html += `<tr><td>${c} ${currencyFlagImg[c] || ''}</td><td>${totalByCurrency[c].toFixed(1)}</td></tr>`;
+            }
+            html += `<tr class="total-row"><td>总计</td><td>${grandTotal.toFixed(1)}</td></tr>`;
+            dailyTotalBody.innerHTML = html;
 
             dayBills.forEach((item) => {
                 const tr = document.createElement("tr");
@@ -453,7 +552,7 @@
             const time = getNowTime();
             const type = typeSelect.value;
             const goods = goodsInput.value.trim();
-            const currency = currencySelect.value;
+            const currency = selectedCurrency;
             const amount = Number(amountInput.value);
 
             if (!date || !goods || isNaN(amount) || amount < 0) {
@@ -518,13 +617,13 @@
             
             html += `<div class="summary-item"><strong>各币种总额：</strong><br>`;
             for(let c in currencyTotal){
-                html += `${c}：${currencyTotal[c].toFixed(2)}<br>`;
+                html += `${c} ${currencyFlagImg[c] || ''}：${currencyTotal[c].toFixed(1)}<br>`;
             }
             html += `</div>`;
 
             html += `<div class="summary-item"><strong>分类总额：</strong><br>`;
             for(let t in typeTotal){
-                html += `${t}：${typeTotal[t].toFixed(2)}<br>`;
+                html += `${t}：${typeTotal[t].toFixed(1)}<br>`;
             }
             html += `</div>`;
 
@@ -532,6 +631,11 @@
                 html = `<div class="summary-item">本月暂无任何消费记录</div>`;
             }
             summaryContent.innerHTML = html;
+        }
+
+        // 注册 Service Worker（PWA 安装必需）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
         }
 
         // 页面初始化渲染

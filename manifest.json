@@ -1,7 +1,9 @@
 {
   "name": "消费登记记录簿",
   "short_name": "消费记录",
-  "start_url": "index.html",
+  "description": "日常消费登记簿，支持葡币/人民币/港币",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#007bff",
